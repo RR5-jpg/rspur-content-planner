@@ -1,0 +1,29 @@
+{
+  "profil_rumah_sakit": {
+    "nama": "Rumah Sakit Pertamedika Ummi Rosnati",
+    "singkatan": "RSPUR",
+    "pendaftaran_online": "Aplikasi Online & WhatsApp RSPUR"
+  },
+  "unit_layanan": {
+    "pusat_jantung": {
+      "layanan_tersedia": [
+        "Prime Care IGD 24 Jam",
+        "Cath Lab",
+        "EKG & Echocardiography"
+      ],
+      "layanan_tidak_tersedia": [
+        "Operasi Bedah Jantung Terbuka (CABG)"
+      ]
+    },
+    "rehabilitasi_medik": {
+      "layanan_tersedia": [
+        "Terapi Pasca Cedera / Operasi",
+        "Alat terapi modern",
+        "Fisioterapi pencegahan kekakuan sendi"
+      ],
+      "layanan_tidak_tersedia": [
+        "Terapi sel punca (Stem Cell)"
+      ]
+    }
+  }
+}

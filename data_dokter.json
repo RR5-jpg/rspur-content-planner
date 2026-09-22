@@ -1,0 +1,20 @@
+{
+  "spesialisasi": {
+    "jantung_pembuluh_darah": [
+      {
+        "nama_lengkap": "Dr. dr. M. Ridwan, MAppSc, Sp.JP, Subsp.P.R.KU(K), FIHA, FAsCC",
+        "jabatan": "Dokter Spesialis Jantung & Pembuluh Darah"
+      },
+      {
+        "nama_lengkap": "dr. Lyra Febrianda, Sp.JP(K)-FIHA",
+        "jabatan": "Dokter Spesialis Jantung Konsultan"
+      }
+    ],
+    "rehabilitasi_medik": [
+      {
+        "nama_lengkap": "dr. Denafianti, Sp. KFR",
+        "jabatan": "Spesialis Kedokteran Fisik & Rehabilitasi"
+      }
+    ]
+  }
+}
