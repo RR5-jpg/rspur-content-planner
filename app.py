@@ -1,46 +1,58 @@
 import os
+import requests
 import streamlit as st
-import google.generativeai as genai
 from groq import Groq
 from dotenv import load_dotenv
 
-# Load environment variables
 load_dotenv()
 
-# Konfigurasi halaman Streamlit
 st.set_page_config(
     page_title="AI Medical Content Planner RSPUR",
     page_icon="🏥",
     layout="wide"
 )
 
-# Ambil API Key dari st.secrets atau environment lokal
 GROQ_API_KEY = st.secrets.get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY")
 
-# Validasi API Key
 if not GROQ_API_KEY or not GEMINI_API_KEY:
-    st.error("⚠️ API Key untuk Groq atau Gemini belum dikonfigurasi dengan benar!")
+    st.error("⚠️ API Key untuk Groq atau Gemini belum dikonfigurasi!")
     st.stop()
 
-# Inisialisasi Client AI
 groq_client = Groq(api_key=GROQ_API_KEY)
-genai.configure(api_key=GEMINI_API_KEY)
 
-# ✅ PERBAIKAN: Gunakan model Groq yang masih aktif (per September 2026)
-# openai/gpt-oss-120b adalah pengganti resmi llama-3.3-70b-versatile
 GROQ_MODEL = "openai/gpt-oss-120b"
-
-# ✅ PERBAIKAN: Gunakan model Gemini yang masih aktif
-GEMINI_MODEL = "gemini-2.5-flash"
-
-gemini_model = genai.GenerativeModel(GEMINI_MODEL)
+GEMINI_MODEL = "gemini-3.6-flash"
 
 st.title("🏥 AI Medical Content Planner RSPUR")
 st.markdown(
-    "Ditenagai oleh Groq (GPT-OSS 120B) untuk Analisa Tren "
-    "& Gemini 2.5 Flash untuk Copywriting Medis"
+    f"Ditenagai Groq (`{GROQ_MODEL}`) & Gemini (`{GEMINI_MODEL}`) via REST API"
 )
+
+def call_gemini(prompt: str) -> str:
+    """Panggil Gemini via REST API (tanpa SDK google-genai)."""
+    url = (
+        f"https://generativelanguage.googleapis.com/v1beta/"
+        f"models/{GEMINI_MODEL}:generateContent"
+    )
+    r = requests.post(
+        url,
+        headers={
+            "Content-Type": "application/json",
+            "x-goog-api-key": GEMINI_API_KEY,
+        },
+        json={
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "temperature": 0.7,
+                "maxOutputTokens": 8192,
+            },
+        },
+        timeout=180,
+    )
+    r.raise_for_status()
+    data = r.json()
+    return data["candidates"][0]["content"]["parts"][0]["text"]
 
 with st.form("content_form"):
     st.subheader("⚙️ Pengaturan Konten")
@@ -52,13 +64,13 @@ with st.form("content_form"):
 
 if submitted:
     if not topik.strip():
-        st.warning("⚠️ Mohon masukkan topik atau kampanye terlebih dahulu!")
+        st.warning("⚠️ Mohon masukkan topik terlebih dahulu!")
     else:
         with st.status("🧠 Memproses Data AI...", expanded=True) as status:
             try:
-                st.write(f"🔍 Mengambil data tren medis via Groq ({GROQ_MODEL})...")
+                st.write(f"🔍 Analisa tren medis via Groq (`{GROQ_MODEL}`)...")
                 groq_response = groq_client.chat.completions.create(
-                    model=GROQ_MODEL,  # ✅ Menggunakan variabel
+                    model=GROQ_MODEL,
                     messages=[
                         {
                             "role": "system",
@@ -73,17 +85,15 @@ if submitted:
                 )
                 analisis_tren = groq_response.choices[0].message.content
 
-                st.write(f"✍️ Menyusun naskah dan validasi fasilitas via Gemini ({GEMINI_MODEL})...")
+                st.write(f"✍️ Menyusun naskah via Gemini (`{GEMINI_MODEL}`)...")
                 prompt = f"""
-                Berdasarkan analisis tren berikut:
-                {analisis_tren}
-                
-                Buatlah rencana konten atau naskah profesional rumah sakit untuk topik: "{topik}".
-                Sajikan dengan struktur yang jelas, rapi, dan informatif ala standar humas medis RSPUR.
-                """
+Berdasarkan analisis tren berikut:
+{analisis_tren}
 
-                response = gemini_model.generate_content(prompt)
-                hasil_konten = response.text
+Buatlah rencana konten atau naskah profesional rumah sakit untuk topik: "{topik}".
+Sajikan dengan struktur yang jelas, rapi, dan informatif ala standar humas medis RSPUR.
+"""
+                hasil_konten = call_gemini(prompt)
 
                 status.update(label="✅ Konten Berhasil Dibuat!", state="complete", expanded=False)
 
