@@ -1,4 +1,6 @@
 import os
+import time
+import random
 import requests
 import streamlit as st
 from groq import Groq
@@ -22,37 +24,81 @@ if not GROQ_API_KEY or not GEMINI_API_KEY:
 groq_client = Groq(api_key=GROQ_API_KEY)
 
 GROQ_MODEL = "openai/gpt-oss-120b"
-GEMINI_MODEL = "gemini-3.6-flash"
+
+# ✅ Daftar model fallback: coba satu per satu kalau model utama 503
+GEMINI_FALLBACK_CHAIN = [
+    "gemini-3.6-flash",        # Model utama
+    "gemini-3.5-flash",        # Fallback 1 (GA, stabil)
+    "gemini-3.1-flash-lite",   # Fallback 2 (paling murah & cepat)
+]
 
 st.title("🏥 AI Medical Content Planner RSPUR")
-st.markdown(
-    f"Ditenagai Groq (`{GROQ_MODEL}`) & Gemini (`{GEMINI_MODEL}`) via REST API"
-)
+st.markdown(f"Ditenagai Groq (`{GROQ_MODEL}`) & Gemini (fallback chain) via REST API")
 
-def call_gemini(prompt: str) -> str:
-    """Panggil Gemini via REST API (tanpa SDK google-genai)."""
-    url = (
-        f"https://generativelanguage.googleapis.com/v1beta/"
-        f"models/{GEMINI_MODEL}:generateContent"
-    )
-    r = requests.post(
-        url,
-        headers={
-            "Content-Type": "application/json",
-            "x-goog-api-key": GEMINI_API_KEY,
-        },
-        json={
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {
-                "temperature": 0.7,
-                "maxOutputTokens": 8192,
-            },
-        },
-        timeout=180,
-    )
-    r.raise_for_status()
-    data = r.json()
-    return data["candidates"][0]["content"]["parts"][0]["text"]
+
+def call_gemini_with_retry(prompt: str, max_retries: int = 3) -> str:
+    """
+    Panggil Gemini dengan:
+    1. Exponential backoff + jitter saat 503 (retry 3x per model)
+    2. Fallback otomatis ke model berikutnya di chain
+    """
+    last_error = None
+
+    for model in GEMINI_FALLBACK_CHAIN:
+        url = (
+            f"https://generativelanguage.googleapis.com/v1beta/"
+            f"models/{model}:generateContent"
+        )
+
+        for attempt in range(1, max_retries + 1):
+            try:
+                r = requests.post(
+                    url,
+                    headers={
+                        "Content-Type": "application/json",
+                        "x-goog-api-key": GEMINI_API_KEY,
+                    },
+                    json={
+                        "contents": [{"parts": [{"text": prompt}]}],
+                        "generationConfig": {
+                            "temperature": 0.7,
+                            "maxOutputTokens": 8192,
+                        },
+                    },
+                    timeout=180,
+                )
+
+                # Sukses
+                if r.status_code == 200:
+                    data = r.json()
+                    return data["candidates"][0]["content"]["parts"][0]["text"]
+
+                # 503 / 429 → coba retry model yang sama
+                if r.status_code in (503, 429):
+                    wait = (2 ** attempt) + random.uniform(0, 1)
+                    st.write(
+                        f"⏳ Model `{model}` sibuk (HTTP {r.status_code}). "
+                        f"Retry {attempt}/{max_retries} dalam {wait:.1f}s..."
+                    )
+                    time.sleep(wait)
+                    last_error = f"{model}: HTTP {r.status_code}"
+                    continue
+
+                # Error lain (400, 401, 403) → jangan retry, langsung raise
+                r.raise_for_status()
+
+            except requests.exceptions.Timeout:
+                wait = (2 ** attempt) + random.uniform(0, 1)
+                st.write(f"⏳ Timeout pada `{model}`. Retry {attempt}/{max_retries}...")
+                time.sleep(wait)
+                last_error = f"{model}: timeout"
+                continue
+
+        # Kalau model ini gagal semua retry, lanjut ke model berikutnya
+        st.write(f"⚠️ Model `{model}` gagal setelah {max_retries}x. Coba fallback berikutnya...")
+
+    raise RuntimeError(f"Semua model Gemini gagal. Error terakhir: {last_error}")
+
 
 with st.form("content_form"):
     st.subheader("⚙️ Pengaturan Konten")
@@ -85,7 +131,7 @@ if submitted:
                 )
                 analisis_tren = groq_response.choices[0].message.content
 
-                st.write(f"✍️ Menyusun naskah via Gemini (`{GEMINI_MODEL}`)...")
+                st.write("✍️ Menyusun naskah via Gemini (dengan retry & fallback)...")
                 prompt = f"""
 Berdasarkan analisis tren berikut:
 {analisis_tren}
@@ -93,7 +139,7 @@ Berdasarkan analisis tren berikut:
 Buatlah rencana konten atau naskah profesional rumah sakit untuk topik: "{topik}".
 Sajikan dengan struktur yang jelas, rapi, dan informatif ala standar humas medis RSPUR.
 """
-                hasil_konten = call_gemini(prompt)
+                hasil_konten = call_gemini_with_retry(prompt)
 
                 status.update(label="✅ Konten Berhasil Dibuat!", state="complete", expanded=False)
 
