@@ -27,15 +27,27 @@ if not GROQ_API_KEY or not GEMINI_API_KEY:
 groq_client = Groq(api_key=GROQ_API_KEY)
 genai.configure(api_key=GEMINI_API_KEY)
 
-# Menggunakan model aktif yang stabil
-gemini_model = genai.GenerativeModel('gemini-1.5-flash')
+# ✅ PERBAIKAN: Gunakan model Groq yang masih aktif (per September 2026)
+# openai/gpt-oss-120b adalah pengganti resmi llama-3.3-70b-versatile
+GROQ_MODEL = "openai/gpt-oss-120b"
+
+# ✅ PERBAIKAN: Gunakan model Gemini yang masih aktif
+GEMINI_MODEL = "gemini-2.5-flash"
+
+gemini_model = genai.GenerativeModel(GEMINI_MODEL)
 
 st.title("🏥 AI Medical Content Planner RSPUR")
-st.markdown("Ditenagai oleh Groq (Llama 3.3) untuk Analisa Tren & Gemini 1.5 untuk Copywriting Medis")
+st.markdown(
+    "Ditenagai oleh Groq (GPT-OSS 120B) untuk Analisa Tren "
+    "& Gemini 2.5 Flash untuk Copywriting Medis"
+)
 
 with st.form("content_form"):
     st.subheader("⚙️ Pengaturan Konten")
-    topik = st.text_area("🎯 Topik / Kampanye Medis:", placeholder="Contoh: Buat konten kalender fokus pada jantung, dari 28 sep - 4 okt 2026...")
+    topik = st.text_area(
+        "🎯 Topik / Kampanye Medis:",
+        placeholder="Contoh: Buat konten kalender fokus pada jantung, dari 28 sep - 4 okt 2026..."
+    )
     submitted = st.form_submit_button("🚀 Buat Konten Sekarang")
 
 if submitted:
@@ -44,18 +56,24 @@ if submitted:
     else:
         with st.status("🧠 Memproses Data AI...", expanded=True) as status:
             try:
-                st.write("🔍 Mengambil data tren medis via Groq (Llama-3.3)...")
+                st.write(f"🔍 Mengambil data tren medis via Groq ({GROQ_MODEL})...")
                 groq_response = groq_client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
+                    model=GROQ_MODEL,  # ✅ Menggunakan variabel
                     messages=[
-                        {"role": "system", "content": "Anda adalah analis riset medis dan humas rumah sakit berpengalaman."},
-                        {"role": "user", "content": f"Analisis tren dan berikan poin-poin kampanye kesehatan profesional untuk topik berikut: {topik}"}
+                        {
+                            "role": "system",
+                            "content": "Anda adalah analis riset medis dan humas rumah sakit berpengalaman."
+                        },
+                        {
+                            "role": "user",
+                            "content": f"Analisis tren dan berikan poin-poin kampanye kesehatan profesional untuk topik berikut: {topik}"
+                        }
                     ],
                     temperature=0.7,
                 )
                 analisis_tren = groq_response.choices[0].message.content
 
-                st.write("✍️ Menyusun naskah dan validasi fasilitas via Gemini...")
+                st.write(f"✍️ Menyusun naskah dan validasi fasilitas via Gemini ({GEMINI_MODEL})...")
                 prompt = f"""
                 Berdasarkan analisis tren berikut:
                 {analisis_tren}
@@ -63,12 +81,12 @@ if submitted:
                 Buatlah rencana konten atau naskah profesional rumah sakit untuk topik: "{topik}".
                 Sajikan dengan struktur yang jelas, rapi, dan informatif ala standar humas medis RSPUR.
                 """
-                
+
                 response = gemini_model.generate_content(prompt)
                 hasil_konten = response.text
 
                 status.update(label="✅ Konten Berhasil Dibuat!", state="complete", expanded=False)
-                
+
                 st.markdown("---")
                 st.subheader("📄 Hasil Generasi Konten:")
                 st.markdown(hasil_konten)
@@ -76,4 +94,3 @@ if submitted:
             except Exception as e:
                 status.update(label="❌ Terjadi Kesalahan Sistem!", state="error", expanded=True)
                 st.error(f"Detail Error: {str(e)}")
-
