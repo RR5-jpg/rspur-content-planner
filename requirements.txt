@@ -1,7 +1,7 @@
-streamlit==1.32.0
-google-generativeai==0.4.1
-groq==0.4.2
-weasyprint==61.0
-streamlit-drawable-canvas==0.9.3
-Pillow==10.2.0
-python-dotenv==1.0.1
+streamlit
+google-generativeai
+groq
+weasyprint
+streamlit-drawable-canvas
+Pillow
+python-dotenv
