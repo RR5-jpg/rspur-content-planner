@@ -14,28 +14,32 @@ st.set_page_config(
     layout="wide"
 )
 
+# ============================================================
+# KONFIGURASI API KEY
+# ============================================================
 GROQ_API_KEY = st.secrets.get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
-GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY")
+CEREBRAS_API_KEY = st.secrets.get("CEREBRAS_API_KEY") or os.getenv("CEREBRAS_API_KEY")
 
-if not GROQ_API_KEY or not GEMINI_API_KEY:
-    st.error("⚠️ API Key untuk Groq atau Gemini belum dikonfigurasi!")
+if not GROQ_API_KEY:
+    st.error("⚠️ API Key Groq belum dikonfigurasi!")
     st.stop()
 
 groq_client = Groq(api_key=GROQ_API_KEY)
 
+# ============================================================
+# KONFIGURASI MODEL
+# ============================================================
 GROQ_MODEL = "openai/gpt-oss-120b"
 
-GEMINI_FALLBACK_CHAIN = [
-    "gemini-3.5-flash",
-    "gemini-3.6-flash",
-    "gemini-3.1-flash-lite",
-]
+# Cerebras - OpenAI-compatible endpoint (model sama dengan Groq)
+CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
+CEREBRAS_MODEL = "gpt-oss-120b"
 
 st.title("🏥 AI Medical Content Planner RSPUR")
-st.markdown("Generator Konten Medis sesuai **Template Resmi RSPUR** (Editorial Plan + Brief Konten)")
+st.markdown("Groq (utama) + Cerebras (fallback) — 2 penyedia independen")
 
 # ============================================================
-# TEMPLATE MASTER RSPUR (dipakai sebagai acuan AI)
+# TEMPLATE MASTER RSPUR
 # ============================================================
 TEMPLATE_EDITORIAL_PLAN = """
 STRUKTUR EDITORIAL PLAN RSPUR (WAJIB DIIKUTI PERSIS):
@@ -48,7 +52,7 @@ STRUKTUR EDITORIAL PLAN RSPUR (WAJIB DIIKUTI PERSIS):
 **TOTAL KONTEN:** X POSTINGAN
 **FUNNEL STRATEGY:** X TOFU | X MOFU | X BOFU | X COMBO
 **KANAL DISTRIBUSI:** IG, FB, YT, TikTok, X, LinkedIn, WA
-**VERIFIKASI MEDIS:** [Sebutkan guideline: PERKI/AHA/WHO/POGI/Kemenkes]
+**VERIFIKASI MEDIS:** [Guideline: PERKI/AHA/WHO/POGI/Kemenkes]
 
 ---
 
@@ -56,13 +60,13 @@ STRUKTUR EDITORIAL PLAN RSPUR (WAJIB DIIKUTI PERSIS):
 
 | TANGGAL & FUNNEL | TOPIK & FORMAT | KONSEP COPYWRITING (HOOK, FAKTA, ISI, CTA) | NARASUMBER & TIM | RUJUKAN |
 |---|---|---|---|---|
-| [Hari, Tgl Bulan Tahun]<br/>[TOFU/MOFU/BOFU] | [Judul Topik]<br/>Format: [Karosel/Video/Reels/Story/Poster/Artikel]<br/>Kanal: [IG/FB/YT/TikTok/X/LinkedIn/WA] | **HOOK** [Kalimat pembuka yang memancing]<br/>**FAKTA** [Data medis pendukung]<br/>**ISI** [Penjelasan utama]<br/>**CTA** [Call to action] | Nakes: [Nama lengkap + gelar]<br/>Tim: [Copywriter/Desainer/Videografer/Admin Medsos] | [Referensi guideline] |
+| [Hari, Tgl Bulan Tahun]<br/>[TOFU/MOFU/BOFU] | [Judul Topik]<br/>Format: [Karosel/Video/Reels/Story/Poster/Artikel]<br/>Kanal: [IG/FB/YT/TikTok/X/LinkedIn/WA] | **HOOK** [Kalimat pembuka]<br/>**FAKTA** [Data medis]<br/>**ISI** [Penjelasan]<br/>**CTA** [Call to action] | Nakes: [Nama lengkap + gelar]<br/>Tim: [Copywriter/Desainer/Videografer/Admin] | [Referensi guideline] |
 
 [Ulangi untuk setiap hari]
 
 ---
 
-### LEMBAR VERIFIKASI & PERSETUJUAN PUBLIKASI (SIGN-OFF BLOCK)
+### LEMBAR VERIFIKASI & PERSETUJUAN PUBLIKASI
 
 | DISIAPKAN OLEH | VERIFIKASI MEDIS | DISETUJUI OLEH |
 |---|---|---|
@@ -81,12 +85,12 @@ STRUKTUR BRIEF KONTEN EDUKASI MEDIS RSPUR (WAJIB DIIKUTI PERSIS):
 |---|---|
 | **Judul / Topik** | [Judul lengkap] |
 | **Format & Platform** | [Carousel/Video/dll] / [IG & FB/YT/TikTok] |
-| **Funnel Target** | [TOFU: Awareness / MOFU: Edukasi & Pertimbangan / BOFU: Konversi Layanan] |
+| **Funnel Target** | [TOFU/MOFU/BOFU] |
 | **Kategori Konten** | [Edukasi Medis & Preventif / Informasi Layanan] |
 | **Narasumber / Reviewer** | [Nama dokter + gelar lengkap] |
 
 **Tujuan Strategis & Kampanye Konten:**
-[Paragraf tujuan, 2-3 kalimat]
+[Paragraf tujuan]
 
 ---
 
@@ -98,76 +102,113 @@ Sub-copy: [Kalimat pendukung] [Swipe >>]
 Visual Direction: [Deskripsi visual]
 
 **Slide 2 — [Nama Slide]:**
-[Judul/Sub-headline]
 [Isi konten]
 Visual Direction: [Deskripsi visual]
-
-**Slide 3 — [Nama Slide]:**
-[Isi]
-Visual Direction: [Deskripsi]
 
 [Lanjutkan sampai slide terakhir]
 
 ---
 
-**CATATAN DESAIN & PANDUAN VISUAL TIM KREATIF:**
+**CATATAN DESAIN:**
 - Warna: [Panduan warna hex]
 - Ukuran teks headline minimal 32pt pada artboard 1080x1350px
 - Watermark logo RSPUR di sudut kanan atas setiap slide
 
 ---
 
-### LEMBAR REVIEW & PERSETUJUAN MEDIS (APPROVAL FORM)
+### LEMBAR REVIEW & PERSETUJUAN MEDIS
 
-☐ Setuju Tanpa Revisi  ☐ Setuju Dengan Catatan Minor  ☐ Perlu Perbaikan Naskah/Visual
-
-Catatan Tambahan / Masukan Dokter Spesialis:
-[Area untuk catatan]
+☐ Setuju Tanpa Revisi  ☐ Setuju Dengan Catatan Minor  ☐ Perlu Perbaikan
 
 Diajukan Oleh: Tim Marketing Digital & Humas RSPUR
 Ditinjau & Disetujui Oleh: [Nama Dokter + Gelar]
 """
 
 
-def call_gemini_with_retry(prompt: str, max_retries: int = 2) -> str:
+# ============================================================
+# FUNGSI PEMANGGILAN AI
+# ============================================================
+def call_groq(prompt: str, system_msg: str = "Anda adalah asisten humas medis RSPUR.") -> str:
+    """Panggil Groq dengan retry."""
     last_error = None
-    for model in GEMINI_FALLBACK_CHAIN:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-        for attempt in range(1, max_retries + 1):
-            try:
-                r = requests.post(
-                    url,
-                    headers={
-                        "Content-Type": "application/json",
-                        "x-goog-api-key": GEMINI_API_KEY,
-                    },
-                    json={
-                        "contents": [{"parts": [{"text": prompt}]}],
-                        "generationConfig": {
-                            "temperature": 0.5,
-                            "maxOutputTokens": 16000,
-                        },
-                    },
-                    timeout=240,
-                )
-                if r.status_code == 200:
-                    data = r.json()
-                    return data["candidates"][0]["content"]["parts"][0]["text"]
-                if r.status_code in (503, 429):
-                    wait = (2 ** attempt) + random.uniform(0, 1)
-                    st.write(f"⏳ `{model}` sibuk ({r.status_code}). Retry {attempt}/{max_retries} dalam {wait:.1f}s...")
-                    time.sleep(wait)
-                    last_error = f"{model}: HTTP {r.status_code}"
-                    continue
-                r.raise_for_status()
-            except requests.exceptions.Timeout:
+    for attempt in range(1, 4):
+        try:
+            r = groq_client.chat.completions.create(
+                model=GROQ_MODEL,
+                messages=[
+                    {"role": "system", "content": system_msg},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.5,
+                max_tokens=8000,
+            )
+            return r.choices[0].message.content
+        except Exception as e:
+            last_error = e
+            if attempt < 3:
                 wait = (2 ** attempt) + random.uniform(0, 1)
-                st.write(f"⏳ Timeout pada `{model}`. Retry {attempt}/{max_retries}...")
+                st.write(f"⏳ Groq sibuk ({e}). Retry {attempt}/3 dalam {wait:.1f}s...")
                 time.sleep(wait)
-                last_error = f"{model}: timeout"
+    raise RuntimeError(f"Groq gagal setelah 3x: {last_error}")
+
+
+def call_cerebras(prompt: str, system_msg: str = "Anda adalah asisten humas medis RSPUR.") -> str:
+    """Fallback ke Cerebras (OpenAI-compatible)."""
+    if not CEREBRAS_API_KEY:
+        raise RuntimeError("CEREBRAS_API_KEY tidak tersedia. Groq juga gagal.")
+
+    last_error = None
+    for attempt in range(1, 4):
+        try:
+            r = requests.post(
+                CEREBRAS_URL,
+                headers={
+                    "Authorization": f"Bearer {CEREBRAS_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": CEREBRAS_MODEL,
+                    "messages": [
+                        {"role": "system", "content": system_msg},
+                        {"role": "user", "content": prompt},
+                    ],
+                    "temperature": 0.5,
+                    "max_tokens": 8000,
+                },
+                timeout=180,
+            )
+            if r.status_code == 200:
+                return r.json()["choices"][0]["message"]["content"]
+
+            if r.status_code in (429, 503):
+                wait = (2 ** attempt) + random.uniform(0, 1)
+                st.write(f"⏳ Cerebras sibuk (HTTP {r.status_code}). Retry {attempt}/3 dalam {wait:.1f}s...")
+                time.sleep(wait)
+                last_error = f"HTTP {r.status_code}"
                 continue
-        st.write(f"⚠️ `{model}` gagal, lanjut ke fallback berikutnya...")
-    raise RuntimeError(f"Semua model Gemini gagal. Error: {last_error}")
+
+            r.raise_for_status()
+        except requests.exceptions.Timeout:
+            wait = (2 ** attempt) + random.uniform(0, 1)
+            st.write(f"⏳ Cerebras timeout. Retry {attempt}/3...")
+            time.sleep(wait)
+            last_error = "timeout"
+            continue
+        except Exception as e:
+            last_error = e
+
+    raise RuntimeError(f"Cerebras gagal setelah 3x: {last_error}")
+
+
+def generate_content(prompt: str, system_msg: str = "Anda adalah asisten humas medis RSPUR.") -> str:
+    """Coba Groq dulu, kalau gagal fallback ke Cerebras."""
+    try:
+        st.write("🟢 Menulis via Groq...")
+        return call_groq(prompt, system_msg)
+    except Exception as e:
+        st.write(f"⚠️ Groq gagal: {e}")
+        st.write("🟡 Beralih ke Cerebras (fallback)...")
+        return call_cerebras(prompt, system_msg)
 
 
 # ============================================================
@@ -179,11 +220,11 @@ with st.form("content_form"):
     col1, col2 = st.columns(2)
     with col1:
         template_pilihan = st.selectbox(
-            "📋 Format Output (Sesuai Template RSPUR):",
+            "📋 Format Output:",
             [
                 "📊 Editorial Plan Mingguan (Tabel)",
                 "📝 Brief Konten Detail (Naskah per Slide)",
-                "📚 Kombinasi Lengkap (Editorial Plan + Brief per Konten)",
+                "📚 Kombinasi Lengkap",
             ]
         )
     with col2:
@@ -206,28 +247,14 @@ if submitted:
     else:
         with st.status("🧠 Memproses Data AI...", expanded=True) as status:
             try:
-                # STEP 1: Analisa tren via Groq
+                # STEP 1: Analisa tren
                 st.write(f"🔍 Analisa tren medis via Groq (`{GROQ_MODEL}`)...")
-                groq_response = groq_client.chat.completions.create(
-                    model=GROQ_MODEL,
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": (
-                                "Anda adalah analis riset medis dan humas rumah sakit RSPUR berpengalaman. "
-                                "Berikan analisa tren yang ringkas, berbasis data, dan relevan untuk konten media sosial rumah sakit."
-                            )
-                        },
-                        {
-                            "role": "user",
-                            "content": f"Analisis tren medis & poin-poin kampanye kesehatan untuk topik: {topik}. Durasi: {durasi}."
-                        }
-                    ],
-                    temperature=0.7,
+                analisis_tren = generate_content(
+                    prompt=f"Analisis tren medis & poin-poin kampanye kesehatan untuk topik: {topik}. Durasi: {durasi}.",
+                    system_msg="Anda adalah analis riset medis dan humas rumah sakit RSPUR berpengalaman."
                 )
-                analisis_tren = groq_response.choices[0].message.content
 
-                # STEP 2: Tentukan template
+                # STEP 2: Pilih template
                 if template_pilihan.startswith("📊"):
                     template_used = TEMPLATE_EDITORIAL_PLAN
                     instruksi_format = "Gunakan HANYA format Editorial Plan (tabel harian)."
@@ -241,16 +268,16 @@ if submitted:
                         "(2) Brief Konten detail untuk SETIAP topik di editorial plan."
                     )
 
-                # STEP 3: Generate via Gemini sesuai template
-                st.write(f"✍️ Menyusun naskah sesuai template RSPUR via Gemini...")
+                # STEP 3: Generate naskah
+                st.write("✍️ Menyusun naskah sesuai template RSPUR...")
                 prompt = f"""
-Anda adalah **Senior Copywriter & Medical Content Planner RSPUR** (Rumah Sakit Rujukan). 
-Tugas Anda: membuat perencanaan konten media sosial sesuai **template resmi RSPUR** di bawah ini.
+Anda adalah **Senior Copywriter & Medical Content Planner RSPUR** (Rumah Sakit Rujukan).
+Tugas: membuat perencanaan konten media sosial sesuai template resmi RSPUR.
 
 ═══════════════════════════════════════════
-📌 TOPIK / KAMPANYE: {topik}
+📌 TOPIK: {topik}
 📅 DURASI: {durasi}
-📋 FORMAT OUTPUT: {instruksi_format}
+📋 FORMAT: {instruksi_format}
 ═══════════════════════════════════════════
 
 📊 ANALISIS TREN DARI TIM RISET:
@@ -265,20 +292,23 @@ Tugas Anda: membuat perencanaan konten media sosial sesuai **template resmi RSPU
 ✅ ATURAN KETAT:
 ═══════════════════════════════════════════
 1. IKUTI struktur template PERSIS — jangan improvisasi format baru.
-2. Gunakan bahasa Indonesia profesional ala humas rumah sakit.
+2. Bahasa Indonesia profesional ala humas rumah sakit.
 3. Setiap konten WAJIB punya: HOOK, FAKTA, ISI, CTA.
 4. Cantumkan nama dokter spesialis lengkap dengan gelar (Sp.JP, Sp.KFR, Sp.OG, dll).
 5. Sertakan referensi medis (PERKI, AHA, WHO, POGI, Kemenkes).
 6. Gunakan formatting Markdown: tabel pakai `|`, header pakai `#`, bullet pakai `-`.
 7. Jangan tambahkan komentar pembuka/penutup di luar template.
-8. Pastikan CTA jelas dan actionable (booking, WA, link, dll).
-9. Untuk carousel, buat minimal 5-7 slide dengan Visual Direction di setiap slide.
-10. Sesuaikan funnel: TOFU (awareness), MOFU (edukasi), BOFU (konversi layanan).
+8. CTA harus jelas dan actionable (booking, WA, link, dll).
+9. Untuk carousel, minimal 5-7 slide dengan Visual Direction.
+10. Sesuaikan funnel: TOFU (awareness), MOFU (edukasi), BOFU (konversi).
 
 Mulai sekarang. Output langsung ke struktur template tanpa basa-basi.
 """
 
-                hasil_konten = call_gemini_with_retry(prompt)
+                hasil_konten = generate_content(
+                    prompt=prompt,
+                    system_msg="Anda adalah Senior Copywriter & Medical Content Planner RSPUR yang patuh template."
+                )
 
                 status.update(label="✅ Konten Berhasil Dibuat!", state="complete", expanded=False)
 
@@ -286,7 +316,6 @@ Mulai sekarang. Output langsung ke struktur template tanpa basa-basi.
                 st.subheader("📄 Hasil Generasi Konten (Sesuai Template RSPUR):")
                 st.markdown(hasil_konten)
 
-                # Tombol download
                 st.download_button(
                     label="⬇️ Download sebagai Markdown (.md)",
                     data=hasil_konten,
