@@ -14,105 +14,190 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- KONFIGURASI API KEY ---
 GROQ_API_KEY = st.secrets.get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY")
-# Tambahkan OpenRouter API Key (opsional, untuk fallback)
-OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY") or os.getenv("OPENROUTER_API_KEY")
 
 if not GROQ_API_KEY or not GEMINI_API_KEY:
     st.error("⚠️ API Key untuk Groq atau Gemini belum dikonfigurasi!")
     st.stop()
 
-# --- INISIALISASI CLIENT ---
 groq_client = Groq(api_key=GROQ_API_KEY)
+
 GROQ_MODEL = "openai/gpt-oss-120b"
 
-# Daftar model Gemini (Fallback chain internal Google)
-# Gunakan model yang stabil (GA) sebagai utama
-GEMINI_MODEL_PRIMARY = "gemini-3.5-flash" # Stabil & GA[reference:5]
-GEMINI_MODEL_FALLBACK = "gemini-3.1-flash-lite" # Alternatif ringan
-
-# Konfigurasi OpenRouter sebagai fallback terakhir
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-# Model yang tersedia di OpenRouter (contoh: Qwen atau model Gemini lainnya)
-OPENROUTER_MODEL = "google/gemini-3.5-flash" 
+GEMINI_FALLBACK_CHAIN = [
+    "gemini-3.5-flash",
+    "gemini-3.6-flash",
+    "gemini-3.1-flash-lite",
+]
 
 st.title("🏥 AI Medical Content Planner RSPUR")
-st.markdown(f"Ditenagai Groq (`{GROQ_MODEL}`) & Gemini (Fallback Chain)")
+st.markdown("Generator Konten Medis sesuai **Template Resmi RSPUR** (Editorial Plan + Brief Konten)")
 
-# --- FUNGSI PEMANGGILAN API GEMINI DENGAN RETRY & FALLBACK ---
-def call_gemini(prompt: str) -> str:
-    """Memanggil Gemini dengan strategi retry dan fallback berlapis."""
-    
-    # 1. Coba Model Utama (Gemini 3.5 Flash) dengan Retry
-    for attempt in range(1, 4): # Maksimal 3 kali percobaan
-        try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL_PRIMARY}:generateContent"
-            r = requests.post(
-                url,
-                headers={"Content-Type": "application/json", "x-goog-api-key": GEMINI_API_KEY},
-                json={"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"temperature": 0.7, "maxOutputTokens": 8192}},
-                timeout=120,
-            )
-            
-            if r.status_code == 200:
-                data = r.json()
-                return data["candidates"][0]["content"]["parts"][0]["text"]
-            
-            if r.status_code in (503, 429): # Jika server sibuk atau limit
-                wait = (2 ** attempt) + random.uniform(0, 1) # Exponential backoff + jitter[reference:6]
-                st.write(f"⏳ Model `{GEMINI_MODEL_PRIMARY}` sibuk (HTTP {r.status_code}). Mencoba lagi dalam {wait:.1f}s... (Percobaan {attempt}/3)")
+# ============================================================
+# TEMPLATE MASTER RSPUR (dipakai sebagai acuan AI)
+# ============================================================
+TEMPLATE_EDITORIAL_PLAN = """
+STRUKTUR EDITORIAL PLAN RSPUR (WAJIB DIIKUTI PERSIS):
+
+# PERENCANAAN KONTEN & JADWAL PUBLIKASI (EDITORIAL PLAN)
+## [Nama Unit/Kampanye] RSPUR – Periode: [Tanggal Awal – Tanggal Akhir]
+
+**DOKUMEN MASTER PDF** | Status: Draft | Ref: EP-RSPUR-[TAHUN]-W[NO-MINGGU]
+
+**TOTAL KONTEN:** X POSTINGAN
+**FUNNEL STRATEGY:** X TOFU | X MOFU | X BOFU | X COMBO
+**KANAL DISTRIBUSI:** IG, FB, YT, TikTok, X, LinkedIn, WA
+**VERIFIKASI MEDIS:** [Sebutkan guideline: PERKI/AHA/WHO/POGI/Kemenkes]
+
+---
+
+### TABEL BRIEF EKSEKUSI EDITORIAL
+
+| TANGGAL & FUNNEL | TOPIK & FORMAT | KONSEP COPYWRITING (HOOK, FAKTA, ISI, CTA) | NARASUMBER & TIM | RUJUKAN |
+|---|---|---|---|---|
+| [Hari, Tgl Bulan Tahun]<br/>[TOFU/MOFU/BOFU] | [Judul Topik]<br/>Format: [Karosel/Video/Reels/Story/Poster/Artikel]<br/>Kanal: [IG/FB/YT/TikTok/X/LinkedIn/WA] | **HOOK** [Kalimat pembuka yang memancing]<br/>**FAKTA** [Data medis pendukung]<br/>**ISI** [Penjelasan utama]<br/>**CTA** [Call to action] | Nakes: [Nama lengkap + gelar]<br/>Tim: [Copywriter/Desainer/Videografer/Admin Medsos] | [Referensi guideline] |
+
+[Ulangi untuk setiap hari]
+
+---
+
+### LEMBAR VERIFIKASI & PERSETUJUAN PUBLIKASI (SIGN-OFF BLOCK)
+
+| DISIAPKAN OLEH | VERIFIKASI MEDIS | DISETUJUI OLEH |
+|---|---|---|
+| (Tim Copywriter & Humas) | (Tim Desain & Videografer) | [Nama Dokter Spesialis] |
+"""
+
+TEMPLATE_BRIEF_KONTEN = """
+STRUKTUR BRIEF KONTEN EDUKASI MEDIS RSPUR (WAJIB DIIKUTI PERSIS):
+
+# RSPUR — BRIEF KONTEN EDUKASI MEDIS
+## Lembar Pengajuan & Review Materi Media Sosial
+
+**MARKETING DIGITAL & HUMAS** | Rencana Tayang: [Tanggal]
+
+| FIELD | ISI |
+|---|---|
+| **Judul / Topik** | [Judul lengkap] |
+| **Format & Platform** | [Carousel/Video/dll] / [IG & FB/YT/TikTok] |
+| **Funnel Target** | [TOFU: Awareness / MOFU: Edukasi & Pertimbangan / BOFU: Konversi Layanan] |
+| **Kategori Konten** | [Edukasi Medis & Preventif / Informasi Layanan] |
+| **Narasumber / Reviewer** | [Nama dokter + gelar lengkap] |
+
+**Tujuan Strategis & Kampanye Konten:**
+[Paragraf tujuan, 2-3 kalimat]
+
+---
+
+### RANCANGAN NASKAH & SLIDE
+
+**Headline Utama (Hook):**
+"[Kalimat hook]"
+Sub-copy: [Kalimat pendukung] [Swipe >>]
+Visual Direction: [Deskripsi visual]
+
+**Slide 2 — [Nama Slide]:**
+[Judul/Sub-headline]
+[Isi konten]
+Visual Direction: [Deskripsi visual]
+
+**Slide 3 — [Nama Slide]:**
+[Isi]
+Visual Direction: [Deskripsi]
+
+[Lanjutkan sampai slide terakhir]
+
+---
+
+**CATATAN DESAIN & PANDUAN VISUAL TIM KREATIF:**
+- Warna: [Panduan warna hex]
+- Ukuran teks headline minimal 32pt pada artboard 1080x1350px
+- Watermark logo RSPUR di sudut kanan atas setiap slide
+
+---
+
+### LEMBAR REVIEW & PERSETUJUAN MEDIS (APPROVAL FORM)
+
+☐ Setuju Tanpa Revisi  ☐ Setuju Dengan Catatan Minor  ☐ Perlu Perbaikan Naskah/Visual
+
+Catatan Tambahan / Masukan Dokter Spesialis:
+[Area untuk catatan]
+
+Diajukan Oleh: Tim Marketing Digital & Humas RSPUR
+Ditinjau & Disetujui Oleh: [Nama Dokter + Gelar]
+"""
+
+
+def call_gemini_with_retry(prompt: str, max_retries: int = 2) -> str:
+    last_error = None
+    for model in GEMINI_FALLBACK_CHAIN:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        for attempt in range(1, max_retries + 1):
+            try:
+                r = requests.post(
+                    url,
+                    headers={
+                        "Content-Type": "application/json",
+                        "x-goog-api-key": GEMINI_API_KEY,
+                    },
+                    json={
+                        "contents": [{"parts": [{"text": prompt}]}],
+                        "generationConfig": {
+                            "temperature": 0.5,
+                            "maxOutputTokens": 16000,
+                        },
+                    },
+                    timeout=240,
+                )
+                if r.status_code == 200:
+                    data = r.json()
+                    return data["candidates"][0]["content"]["parts"][0]["text"]
+                if r.status_code in (503, 429):
+                    wait = (2 ** attempt) + random.uniform(0, 1)
+                    st.write(f"⏳ `{model}` sibuk ({r.status_code}). Retry {attempt}/{max_retries} dalam {wait:.1f}s...")
+                    time.sleep(wait)
+                    last_error = f"{model}: HTTP {r.status_code}"
+                    continue
+                r.raise_for_status()
+            except requests.exceptions.Timeout:
+                wait = (2 ** attempt) + random.uniform(0, 1)
+                st.write(f"⏳ Timeout pada `{model}`. Retry {attempt}/{max_retries}...")
                 time.sleep(wait)
+                last_error = f"{model}: timeout"
                 continue
-            
-            r.raise_for_status() # Error lain (misal 400, 401) langsung diangkat
+        st.write(f"⚠️ `{model}` gagal, lanjut ke fallback berikutnya...")
+    raise RuntimeError(f"Semua model Gemini gagal. Error: {last_error}")
 
-        except Exception as e:
-            st.write(f"⚠️ Terjadi kesalahan pada model `{GEMINI_MODEL_PRIMARY}`: {e}. Mencoba fallback...")
-            break # Keluar dari loop retry, lanjut ke fallback
 
-    # 2. Jika Model Utama Gagal, Coba Model Fallback Internal Google
-    st.write(f"🔄 Beralih ke model fallback: `{GEMINI_MODEL_FALLBACK}`...")
-    try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL_FALLBACK}:generateContent"
-        r = requests.post(
-            url,
-            headers={"Content-Type": "application/json", "x-goog-api-key": GEMINI_API_KEY},
-            json={"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"temperature": 0.7}},
-            timeout=120,
-        )
-        if r.status_code == 200:
-            data = r.json()
-            return data["candidates"][0]["content"]["parts"][0]["text"]
-        r.raise_for_status()
-    except Exception as e:
-        st.write(f"⚠️ Model fallback internal gagal: {e}")
-
-    # 3. Jika Semua Gagal, Coba OpenRouter (Jika API Key Tersedia)
-    if OPENROUTER_API_KEY:
-        st.write("🔄 Mencoba jalur terakhir via OpenRouter...")
-        try:
-            r = requests.post(
-                OPENROUTER_URL,
-                headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}", "Content-Type": "application/json"},
-                json={"model": OPENROUTER_MODEL, "messages": [{"role": "user", "content": prompt}]},
-                timeout=120,
-            )
-            if r.status_code == 200:
-                return r.json()["choices"][0]["message"]["content"]
-            r.raise_for_status()
-        except Exception as e:
-            st.error(f"❌ Semua jalur gagal. Error terakhir dari OpenRouter: {e}")
-            raise RuntimeError("Semua penyedia AI sedang sibuk. Silakan coba lagi nanti.")
-    else:
-        st.warning("⚠️ OpenRouter API Key tidak diatur. Tidak ada fallback eksternal.")
-        raise RuntimeError("Model Gemini utama dan fallback internal gagal.")
-
-# --- FORM & LOGIKA UTAMA ---
+# ============================================================
+# UI
+# ============================================================
 with st.form("content_form"):
     st.subheader("⚙️ Pengaturan Konten")
-    topik = st.text_area("🎯 Topik / Kampanye Medis:", placeholder="Contoh: Buat konten kalender fokus pada jantung, dari 28 sep - 4 okt 2026...")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        template_pilihan = st.selectbox(
+            "📋 Format Output (Sesuai Template RSPUR):",
+            [
+                "📊 Editorial Plan Mingguan (Tabel)",
+                "📝 Brief Konten Detail (Naskah per Slide)",
+                "📚 Kombinasi Lengkap (Editorial Plan + Brief per Konten)",
+            ]
+        )
+    with col2:
+        durasi = st.selectbox(
+            "📅 Rentang Waktu:",
+            ["1 Hari", "3 Hari", "1 Minggu (7 hari)", "2 Minggu (14 hari)"]
+        )
+
+    topik = st.text_area(
+        "🎯 Topik / Kampanye Medis:",
+        placeholder="Contoh: Kampanye Jantung Sehat periode 28 Sep - 4 Okt 2026, fokus deteksi dini & MCU Jantung",
+        height=100,
+    )
+
     submitted = st.form_submit_button("🚀 Buat Konten Sekarang")
 
 if submitted:
@@ -121,32 +206,93 @@ if submitted:
     else:
         with st.status("🧠 Memproses Data AI...", expanded=True) as status:
             try:
+                # STEP 1: Analisa tren via Groq
                 st.write(f"🔍 Analisa tren medis via Groq (`{GROQ_MODEL}`)...")
                 groq_response = groq_client.chat.completions.create(
                     model=GROQ_MODEL,
                     messages=[
-                        {"role": "system", "content": "Anda adalah analis riset medis dan humas rumah sakit berpengalaman."},
-                        {"role": "user", "content": f"Analisis tren dan berikan poin-poin kampanye kesehatan profesional untuk topik berikut: {topik}"}
+                        {
+                            "role": "system",
+                            "content": (
+                                "Anda adalah analis riset medis dan humas rumah sakit RSPUR berpengalaman. "
+                                "Berikan analisa tren yang ringkas, berbasis data, dan relevan untuk konten media sosial rumah sakit."
+                            )
+                        },
+                        {
+                            "role": "user",
+                            "content": f"Analisis tren medis & poin-poin kampanye kesehatan untuk topik: {topik}. Durasi: {durasi}."
+                        }
                     ],
                     temperature=0.7,
                 )
                 analisis_tren = groq_response.choices[0].message.content
 
-                st.write("✍️ Menyusun naskah via Gemini (dengan strategi fallback)...")
+                # STEP 2: Tentukan template
+                if template_pilihan.startswith("📊"):
+                    template_used = TEMPLATE_EDITORIAL_PLAN
+                    instruksi_format = "Gunakan HANYA format Editorial Plan (tabel harian)."
+                elif template_pilihan.startswith("📝"):
+                    template_used = TEMPLATE_BRIEF_KONTEN
+                    instruksi_format = "Gunakan HANYA format Brief Konten (naskah per slide untuk SATU konten utama)."
+                else:
+                    template_used = TEMPLATE_EDITORIAL_PLAN + "\n\n" + TEMPLATE_BRIEF_KONTEN
+                    instruksi_format = (
+                        "Hasilkan DUA bagian: (1) Editorial Plan lengkap dalam tabel, "
+                        "(2) Brief Konten detail untuk SETIAP topik di editorial plan."
+                    )
+
+                # STEP 3: Generate via Gemini sesuai template
+                st.write(f"✍️ Menyusun naskah sesuai template RSPUR via Gemini...")
                 prompt = f"""
-                Berdasarkan analisis tren berikut:
-                {analisis_tren}
-                
-                Buatlah rencana konten atau naskah profesional rumah sakit untuk topik: "{topik}".
-                Sajikan dengan struktur yang jelas, rapi, dan informatif ala standar humas medis RSPUR.
-                """
-                hasil_konten = call_gemini(prompt)
+Anda adalah **Senior Copywriter & Medical Content Planner RSPUR** (Rumah Sakit Rujukan). 
+Tugas Anda: membuat perencanaan konten media sosial sesuai **template resmi RSPUR** di bawah ini.
+
+═══════════════════════════════════════════
+📌 TOPIK / KAMPANYE: {topik}
+📅 DURASI: {durasi}
+📋 FORMAT OUTPUT: {instruksi_format}
+═══════════════════════════════════════════
+
+📊 ANALISIS TREN DARI TIM RISET:
+{analisis_tren}
+
+═══════════════════════════════════════════
+📐 TEMPLATE WAJIB (IKUTI STRUKTUR PERSIS):
+═══════════════════════════════════════════
+{template_used}
+
+═══════════════════════════════════════════
+✅ ATURAN KETAT:
+═══════════════════════════════════════════
+1. IKUTI struktur template PERSIS — jangan improvisasi format baru.
+2. Gunakan bahasa Indonesia profesional ala humas rumah sakit.
+3. Setiap konten WAJIB punya: HOOK, FAKTA, ISI, CTA.
+4. Cantumkan nama dokter spesialis lengkap dengan gelar (Sp.JP, Sp.KFR, Sp.OG, dll).
+5. Sertakan referensi medis (PERKI, AHA, WHO, POGI, Kemenkes).
+6. Gunakan formatting Markdown: tabel pakai `|`, header pakai `#`, bullet pakai `-`.
+7. Jangan tambahkan komentar pembuka/penutup di luar template.
+8. Pastikan CTA jelas dan actionable (booking, WA, link, dll).
+9. Untuk carousel, buat minimal 5-7 slide dengan Visual Direction di setiap slide.
+10. Sesuaikan funnel: TOFU (awareness), MOFU (edukasi), BOFU (konversi layanan).
+
+Mulai sekarang. Output langsung ke struktur template tanpa basa-basi.
+"""
+
+                hasil_konten = call_gemini_with_retry(prompt)
 
                 status.update(label="✅ Konten Berhasil Dibuat!", state="complete", expanded=False)
-                
+
                 st.markdown("---")
-                st.subheader("📄 Hasil Generasi Konten:")
+                st.subheader("📄 Hasil Generasi Konten (Sesuai Template RSPUR):")
                 st.markdown(hasil_konten)
+
+                # Tombol download
+                st.download_button(
+                    label="⬇️ Download sebagai Markdown (.md)",
+                    data=hasil_konten,
+                    file_name="konten_rspur.md",
+                    mime="text/markdown",
+                )
 
             except Exception as e:
                 status.update(label="❌ Terjadi Kesalahan Sistem!", state="error", expanded=True)
