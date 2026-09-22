@@ -14,24 +14,24 @@ st.set_page_config(
     layout="wide"
 )
 
-# Ambil API Key dari st.secrets (untuk Streamlit Cloud) atau environment lokal (.env)
+# Ambil API Key dari st.secrets atau environment lokal
 GROQ_API_KEY = st.secrets.get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY")
 
 # Validasi API Key
 if not GROQ_API_KEY or not GEMINI_API_KEY:
-    st.error("⚠️ API Key untuk Groq atau Gemini belum dikonfigurasi dengan benar di st.secrets atau file .env!")
+    st.error("⚠️ API Key untuk Groq atau Gemini belum dikonfigurasi dengan benar!")
     st.stop()
 
 # Inisialisasi Client AI
 groq_client = Groq(api_key=GROQ_API_KEY)
 genai.configure(api_key=GEMINI_API_KEY)
 
-# Menggunakan gemini-1.5-flash yang cepat, stabil, dan sangat andal untuk teks medis
+# Menggunakan model aktif yang stabil
 gemini_model = genai.GenerativeModel('gemini-1.5-flash')
 
 st.title("🏥 AI Medical Content Planner RSPUR")
-st.markdown("Ditenagai oleh Groq (Llama 3) untuk Analisa Tren & Gemini untuk Copywriting Medis")
+st.markdown("Ditenagai oleh Groq (Llama 3.3) untuk Analisa Tren & Gemini 1.5 untuk Copywriting Medis")
 
 with st.form("content_form"):
     st.subheader("⚙️ Pengaturan Konten")
@@ -44,9 +44,9 @@ if submitted:
     else:
         with st.status("🧠 Memproses Data AI...", expanded=True) as status:
             try:
-                st.write("🔍 Mengambil data tren medis via Groq (Llama-3)...")
+                st.write("🔍 Mengambil data tren medis via Groq (Llama-3.3)...")
                 groq_response = groq_client.chat.completions.create(
-                    model="llama3-70b-8192",
+                    model="llama-3.3-70b-versatile",
                     messages=[
                         {"role": "system", "content": "Anda adalah analis riset medis dan humas rumah sakit berpengalaman."},
                         {"role": "user", "content": f"Analisis tren dan berikan poin-poin kampanye kesehatan profesional untuk topik berikut: {topik}"}
