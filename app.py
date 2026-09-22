@@ -5,6 +5,7 @@ import json
 import time
 import random
 import re
+import textwrap
 import requests
 import streamlit as st
 from groq import Groq
@@ -32,6 +33,11 @@ groq_client = Groq(api_key=GROQ_API_KEY)
 GROQ_MODEL = "openai/gpt-oss-120b"
 CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
 CEREBRAS_MODEL = "gpt-oss-120b"
+
+
+def clean_html(html_str):
+    """Hilangkan indentasi leading agar Markdown tidak render sebagai code block."""
+    return "\n".join(line.lstrip() if line.strip() else "" for line in html_str.split("\n"))
 
 st.title("🏥 AI Medical Content Planner RSPUR")
 
@@ -578,13 +584,13 @@ Aturan WAJIB:
     if editorial_data and brief_data:
         tab1, tab2 = st.tabs(["📊 Editorial Plan", "📝 Brief Konten"])
         with tab1:
-            st.markdown(editorial_to_html(editorial_data), unsafe_allow_html=True)
+            st.markdown(clean_html(editorial_to_html(editorial_data)), unsafe_allow_html=True)
         with tab2:
-            st.markdown(brief_to_html(brief_data), unsafe_allow_html=True)
+            st.markdown(clean_html(brief_to_html(brief_data)), unsafe_allow_html=True)
     elif editorial_data:
-        st.markdown(editorial_to_html(editorial_data), unsafe_allow_html=True)
+        st.markdown(clean_html(editorial_to_html(editorial_data)), unsafe_allow_html=True)
     elif brief_data:
-        st.markdown(brief_to_html(brief_data), unsafe_allow_html=True)
+        st.markdown(clean_html(brief_to_html(brief_data)), unsafe_allow_html=True)
 
     # ============================================================
     # EXPORT
